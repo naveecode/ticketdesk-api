@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ticketdesk API</title>
+    <meta
+      name="description"
+      content="Walkthrough of the ticketdesk helpdesk API: JWT auth, role isolation, status workflow, and AI triage."
+    />
+    <style>
+      :root {
+        --bg: #f4f0e6;
+        --ink: #1c1915;
+        --muted: #5c564c;
+        --line: #e3dacb;
+        --card: #fffdf8;
+        --accent: #0e5f59;
+        --accent-soft: #e5f3f1;
+        --warn: #8a3d12;
+        --code-bg: #221e1a;
+        --code: #f6f1e8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 17px/1.55 ui-sans-serif, system-ui, sans-serif;
+      }
+      a { color: var(--accent); }
+      header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        padding: 18px 8vw;
+        border-bottom: 1px solid var(--line);
+        background: rgba(244, 240, 230, 0.92);
+        position: sticky;
+        top: 0;
+      }
+      header strong { letter-spacing: -0.03em; font-size: 1.05rem; }
+      nav { display: flex; gap: 18px; font-size: 0.95rem; }
+      main { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+      h1 { font-size: 2.4rem; line-height: 1.1; letter-spacing: -0.04em; margin: 0 0 12px; }
+      h2 { margin: 2.4rem 0 0.6rem; font-size: 1.35rem; letter-spacing: -0.03em; }
+      p { margin: 0.6rem 0; }
+      .lede { font-size: 1.15rem; color: var(--muted); }
+      .row { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 8px; }
+      .pill {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 0.86rem;
+      }
+      table { width: 100%; border-collapse: collapse; background: var(--card); }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      code { font-size: 0.88em; }
+      pre {
+        background: var(--code-bg);
+        color: var(--code);
+        padding: 14px 16px;
+        border-radius: 10px;
+        overflow: auto;
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+      .note {
+        background: var(--accent-soft);
+        border-left: 3px solid var(--accent);
+        padding: 10px 14px;
+        margin: 14px 0;
+      }
+      .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+      .flow span {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-family: ui-monospace, monospace;
+        font-size: 0.86rem;
+      }
+      .flow i { color: var(--muted); font-style: normal; }
+      footer { color: var(--muted); font-size: 0.9rem; margin-top: 48px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>ticketdesk</strong>
+      <nav>
+        <a href="#examples">Examples</a>
+        <a href="./redoc.html">API reference</a>
+        <a href="https://github.com/naveecode/ticketdesk-api">Source</a>
+      </nav>
+    </header>
+    <main>
+      <h1>A helpdesk API with a triage worker.</h1>
+      <p class="lede">
+        Customers open tickets. Agents move them from open to closed. A Celery worker
+        assigns a category, a priority, and a suggested first reply — from an
+        OpenAI-compatible model, or from keyword rules when no API key is set.
+      </p>
+      <div class="row">
+        <span class="pill">Django 5.2</span>
+        <span class="pill">Django REST framework</span>
+        <span class="pill">JWT</span>
+        <span class="pill">Celery + Redis</span>
+        <span class="pill">PostgreSQL</span>
+      </div>
+      <p>
+        Run it with <code>docker compose up --build</code>, then
+        <code>docker compose exec api python manage.py seed_demo</code>.
+        Swagger lives at <code>/api/docs/</code> on the API process. This page is the
+        short version; the full schema is the <a href="./redoc.html">ReDoc reference</a>.
+      </p>
+
+      <h2>Who can see what</h2>
+      <table>
+        <thead>
+          <tr><th>Role</th><th>Tickets</th><th>Writes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>customer</td>
+            <td>Only their own. Other ids are 404.</td>
+            <td>Open a ticket, comment in public, edit title and description while it is open.</td>
+          </tr>
+          <tr>
+            <td>agent</td>
+            <td>The whole queue.</td>
+            <td>Status, priority, category, assignee, tags, and internal notes.</td>
+          </tr>
+          <tr>
+            <td>admin</td>
+            <td>The whole queue.</td>
+            <td>Everything an agent can do, plus delete tickets and tags.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Seeded passwords are <code>Ticketdesk-demo-1</code> for
+        <code>admin</code>, <code>sam</code>, <code>riley</code>, <code>alice</code>,
+        <code>bob</code>, and <code>carol</code>. Registration always creates a customer.
+      </p>
+
+      <h2>Status workflow</h2>
+      <div class="flow">
+        <span>open</span><i>→</i>
+        <span>in_progress</span><i>→</i>
+        <span>resolved</span><i>→</i>
+        <span>closed</span>
+      </div>
+      <p>
+        <code>resolved</code> can return to <code>in_progress</code>.
+        <code>closed</code> can return to <code>open</code>.
+        Any other jump is a 400. Customers cannot change status.
+      </p>
+
+      <h2 id="examples">Examples</h2>
+      <p>These bodies were captured from a local seed on 18 Oct 2026. Timestamps will differ on your machine. Tokens are JWTs; the access payload includes <code>role</code> and <code>username</code>.</p>
+
+      <h3>Sign in</h3>
+      <pre>curl -s -X POST http://localhost:8000/api/auth/token/ \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"alice","password":"Ticketdesk-demo-1"}'</pre>
+      <pre>{
+  "refresh": "&lt;jwt&gt;",
+  "access": "&lt;jwt&gt;"
+}</pre>
+
+      <h3>Search Alice's open refunds</h3>
+      <pre>curl -s 'http://localhost:8000/api/tickets/?status=open&amp;search=refund' \
+  -H "Authorization: Bearer $ACCESS"</pre>
+      <pre>{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 7,
+      "title": "Refund for unused seats",
+      "status": "open",
+      "priority": "high",
+      "category": "billing",
+      "requester": {"id": 4, "username": "alice", "role": "customer"},
+      "assignee": null,
+      "tags": ["billing"],
+      "triage_status": "completed",
+      "created_at": "2026-10-18T10:14:55.243713Z",
+      "updated_at": "2026-10-18T11:14:55.243713Z"
+    }
+  ]
+}</pre>
+
+      <h3>The same ticket, as the agent</h3>
+      <p>
+        <code>sam</code> sees the suggested reply and the triage metadata.
+        <code>alice</code> gets <code>null</code> for those fields.
+        <code>triage_latency_ms: 0</code> is the measured keyword-classifier time on that run (under 1 ms).
+      </p>
+      <pre>{
+  "id": 1,
+  "title": "Invoice charged twice this month",
+  "status": "resolved",
+  "priority": "high",
+  "category": "billing",
+  "assignee": {"id": 2, "username": "sam", "role": "agent"},
+  "tags": ["billing"],
+  "triage_status": "completed",
+  "triage_source": "fallback",
+  "triage_model": "",
+  "triage_latency_ms": 0,
+  "suggested_reply": "Thanks for contacting us about billing. An agent will review the charge and follow up with the next step.",
+  "comments": [
+    {"author": {"username": "alice"}, "body": "The second line item matches the first one exactly.", "is_internal": false},
+    {"author": {"username": "sam"}, "body": "I see the duplicate. Finance will issue a credit on the next invoice.", "is_internal": false}
+  ]
+}</pre>
+
+      <h3>Open a ticket</h3>
+      <p>The create response is pending. The worker fills category and priority after the response.</p>
+      <pre>curl -s -X POST http://localhost:8000/api/tickets/ \
+  -H "Authorization: Bearer $ACCESS" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Cannot download the March invoice","description":"The invoice link returns a 404 after I sign in.","tags":["billing"]}'</pre>
+      <pre>{
+  "id": 9,
+  "title": "Cannot download the March invoice",
+  "description": "The invoice link returns a 404 after I sign in.",
+  "tags": ["billing"],
+  "status": "open",
+  "priority": "medium",
+  "category": "general",
+  "triage_status": "pending",
+  "created_at": "2026-10-18T14:15:14.063147Z"
+}</pre>
+
+      <h3>Illegal transition</h3>
+      <pre>curl -s -X PATCH http://localhost:8000/api/tickets/9/ \
+  -H "Authorization: Bearer $AGENT" \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"closed"}'</pre>
+      <pre>{"status": ["Cannot transition from in_progress to closed."]}</pre>
+      <p class="note">
+        That 400 was measured after the ticket had already moved from <code>open</code> to
+        <code>in_progress</code>. Closed is only reachable from resolved.
+      </p>
+
+      <h2>Triage without a key</h2>
+      <p>
+        Empty <code>LLM_API_KEY</code> skips the network and uses keyword rules:
+        billing, access, technical, account, then general. Words such as
+        <code>outage</code> or <code>down</code> force priority <code>urgent</code>.
+        With a key, the worker calls <code>POST {LLM_BASE_URL}/chat/completions</code>,
+        retries timeouts and 429/5xx with backoff (1s, 2s, 4s), then stores the keyword
+        result if the model still fails.
+      </p>
+
+      <footer>
+        <a href="./redoc.html">Open the generated OpenAPI reference</a>
+        · MIT · <a href="https://github.com/naveecode/ticketdesk-api">naveecode/ticketdesk-api</a>
+      </footer>
+    </main>
+  </body>
+</html>

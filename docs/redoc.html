@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ticketdesk API reference</title>
+    <style>
+      body { margin: 0; }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 20px;
+        background: #1c1915;
+        color: #f6f1e8;
+        font: 15px/1.4 ui-sans-serif, system-ui, sans-serif;
+      }
+      header a { color: #f6f1e8; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>Ticketdesk API reference</strong>
+      <a href="./index.html">Walkthrough</a>
+    </header>
+    <div id="redoc"></div>
+    <script src="./redoc.standalone.js"></script>
+    <script>
+      Redoc.init("./openapi.yaml", { scrollYOffset: 48 }, document.getElementById("redoc"));
+    </script>
+  </body>
+</html>
